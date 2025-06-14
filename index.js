@@ -96,7 +96,7 @@ app.get('/api/orders/export-current-fiscal-year', async (req, res) => {
       WHERE fiscal_year = $1;
     `;
     const result = await pool.query(query, [fiscalYear]); // fiscalYearを使用
-    const records = result.rows;
+    let records = result.rows;
 
     if (records.length === 0) {
       console.log(`No records found for fiscal year: ${fiscalYear}`);
