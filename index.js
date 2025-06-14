@@ -14,7 +14,7 @@ const pool = new Pool({
 });
 
 // GASなどから送信されたJSONデータを受け取るエンドポイント
-app.post('/upload-json', async (req, res) => {
+app.post('/api/orders/upload', async (req, res) => {
   const rows = req.body.data; // data配列としてJSONで送られてくる受注データ
   const client = await pool.connect();
 
