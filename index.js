@@ -95,7 +95,8 @@ app.get('/api/orders/export-current-fiscal-year', async (req, res) => {
       console.log(`No records found for fiscal year: ${fiscalYear}`);
       return res.status(404).send(`No order data found for fiscal year ${fiscalYear}.`);
     }
-
+    const columns = Object.keys(records[0]);
+    
     // stringifyのPromise化
     const csvString = await new Promise((resolve, reject) => {
       stringify(records, { header: true, columns: columns }, (err, resultCsv) => {
