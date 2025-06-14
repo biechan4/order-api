@@ -96,26 +96,27 @@ app.get('/api/orders/export-current-fiscal-year', async (req, res) => {
       return res.status(404).send(`No order data found for fiscal year ${fiscalYear}.`);
     }
 
-    // CSVヘッダーの定義 (viewのカラム名に合わせて調整してください)
-    const columns = Object.keys(records[0]); // 最初のレコードのキーをそのままヘッダーとして使用
-
-    // CSV文字列に変換
-    stringify(records, { header: true, columns: columns }, (err, csvString) => {
-      if (err) {
-        console.error('Error stringifying CSV:', err);
-        return res.status(500).send('Error generating CSV data.');
-      }
-
-      // CSVファイルをダウンロードさせるためのヘッダーを設定
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename="orders_fiscal_year_${fiscalYear}.csv"`);
-      res.status(200).send(csvString);
-      console.log(`Successfully exported ${records.length} records for ${fiscalYear}.`);
+    // stringifyのPromise化
+    const csvString = await new Promise((resolve, reject) => {
+      stringify(records, { header: true, columns: columns }, (err, resultCsv) => {
+        if (err) {
+          return reject(err);
+        }
+        resolve(resultCsv);
+      });
     });
 
+    // CSVファイルをダウンロードさせるためのヘッダーを設定
+    // ★ ここでヘッダーを設定する ★
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="orders_fiscal_year_${fiscalYear}.csv"`);
+    res.status(200).send(csvString); // ★ 生成されたCSV文字列を送信 ★
+    console.log(`Successfully exported ${records.length} records for ${fiscalYear}.`);
+
   } catch (err) {
-    console.error('Error exporting order data:', err.stack);
-    res.status(500).send('Failed to export order data from database.');
+    // stringifyのエラーもここで捕捉される
+    console.error('Error exporting order data or generating CSV:', err.stack);
+    res.status(500).send('Error generating CSV data.'); // より具体的なエラーメッセージに変更
   }
 });
 
