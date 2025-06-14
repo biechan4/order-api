@@ -103,6 +103,26 @@ app.get('/api/orders/export-current-fiscal-year', async (req, res) => {
       return res.status(404).send(`No order data found for fiscal year ${fiscalYear}.`);
     }
 
+      // 日付列をYYYY-MM-DD形式の文字列に変換する
+      const formattedRecords = records.map(record => {
+      const newRecord = { ...record }; // 元のレコードを直接変更しないようにコピー
+
+      // order_date 列を変換
+      if (newRecord.order_date instanceof Date) {
+        newRecord.order_date = newRecord.order_date.toISOString().split('T')[0];
+      }
+      // delivery_date 列を変換（もし存在し、Dateオブジェクトの場合）
+      if (newRecord.delivery_date instanceof Date) {
+        newRecord.delivery_date = newRecord.delivery_date.toISOString().split('T')[0];
+      }
+      // 他にも日付として扱いたい列があればここに追加
+      // 例: if (newRecord.some_other_date_column instanceof Date) { ... }
+
+      return newRecord;
+    });
+
+    records = formattedRecords; // フォーマット済みのレコードを使用する
+
     // records[0]が存在することが保証された後にcolumnsを定義
     const columns = Object.keys(records[0]);
 
