@@ -178,15 +178,6 @@ app.get('/api/orders/export-current-fiscal-year', async (req, res) => {
       const day = date.getDate().toString().padStart(2, '0');
       const hours = date.getHours().toString().padStart(2, '0');
       const minutes = date.getMinutes().toString().padStart(2, '0');
-      const seconds = date.getSeconds().getSeconds().toString().padStart(2, '0'); // ここが誤りでした
-
-      // 各部分を取り出す
-      const year = date.getFullYear();
-      // 月は 0 から始まるため +1 し、2桁表示のためにpadStartを使う
-      const month = (date.getMonth() + 1).toString().padStart(2, '0');
-      const day = date.getDate().toString().padStart(2, '0');
-      const hours = date.getHours().toString().padStart(2, '0');
-      const minutes = date.getMinutes().toString().padStart(2, '0');
       // 秒を取り出す（先ほどのコードでgetSecondsが抜けていました）
       const seconds = date.getSeconds().toString().padStart(2, '0');
 
