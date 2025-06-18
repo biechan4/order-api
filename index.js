@@ -34,7 +34,7 @@ app.post('/api/orders/upload', async (req, res) => {
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
       )
       -- ここでステップ1で設定した制約名を指定します
-      ON CONFLICT ON CONSTRAINT unique_order_record DO NOTHING;
+      ON CONFLICT ON CONSTRAINT uq_orders_composite_key DO NOTHING;
     `;
     
     for (const row of rows) {
