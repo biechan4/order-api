@@ -166,12 +166,49 @@ app.get('/api/orders/export-current-fiscal-year', async (req, res) => {
       if (newRecord.delivery_date instanceof Date) {
         newRecord.delivery_date = newRecord.delivery_date.toISOString().split('T')[0];
       }
-      // timestamp 列を変換（もし存在し、Dateオブジェクトの場合）
-      if (newRecord.timestamp instanceof Date) {
-        newRecord.timestamp = newRecord.timestamp.toISOString().split('T')[0];
+      // timestamp フィールドのフォーマット処理
+      // newRecord.timestamp が存在し、かつ Date オブジェクトであることを確認
+      if (newRecord.timestamp && newRecord.timestamp instanceof Date) {
+      const date = newRecord.timestamp;
+
+      // 各部分を取り出す
+      const year = date.getFullYear();
+      // 月は 0 から始まるため +1 し、2桁表示のためにpadStartを使う
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const day = date.getDate().toString().padStart(2, '0');
+      const hours = date.getHours().toString().padStart(2, '0');
+      const minutes = date.getMinutes().toString().padStart(2, '0');
+      const seconds = date.getSeconds().getSeconds().toString().padStart(2, '0'); // ここが誤りでした
+
+      // 各部分を取り出す
+      const year = date.getFullYear();
+      // 月は 0 から始まるため +1 し、2桁表示のためにpadStartを使う
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const day = date.getDate().toString().padStart(2, '0');
+      const hours = date.getHours().toString().padStart(2, '0');
+      const minutes = date.getMinutes().toString().padStart(2, '0');
+      // 秒を取り出す（先ほどのコードでgetSecondsが抜けていました）
+      const seconds = date.getSeconds().toString().padStart(2, '0');
+
+      // 希望する形式に結合する
+      // newRecord.timestamp プロパティ自体を上書きする場合
+      newRecord.timestamp = `${year}${month}${day}${hours}:${minutes}:${seconds}`;
+
+      // あるいは、フォーマット済みの値を別のプロパティに格納する場合（例: timestamp_formatted）
+      // newRecord.timestamp_formatted = `${year}${month}${day}${hours}:${minutes}:${seconds}`;
+
+      } else if (newRecord.timestamp != null) {
+      // もし timestamp が Date オブジェクトでない、または null/undefined でない場合、
+      // 何らかの理由で Date オブジェクトとして取得できなかった可能性がある
+      console.warn("newRecord.timestamp is not a Date object or is null:", newRecord.timestamp);
+      // 必要に応じて、元の値をそのまま使う、エラーを示す文字列にする、などの処理を検討
+      newRecord.timestamp = 'Invalid Date';
+      } else {
+      // newRecord.timestamp が null または undefined の場合
+      console.log("newRecord.timestamp is null or undefined.");
+      // 必要に応じて、空文字列にする、特定の文字列にするなどの処理を検討
+      newRecord.timestamp = '';
       }
-      // 他にも日付として扱いたい列があればここに追加
-      // 例: if (newRecord.some_other_date_column instanceof Date) { ... }
 
       return newRecord;
     });
