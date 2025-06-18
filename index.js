@@ -1,61 +1,112 @@
-// 必要なライブラリの読み込み
+// /workspaces/order-api/index.js
+
 const express = require('express');
 const { Pool } = require('pg');
 
 const app = express();
+app.use(express.json({ limit: '10mb' }));
 
-// JSONボディの受信を可能にするミドルウェア
-app.use(express.json());
-
-// PostgreSQLとの接続設定（Render上の環境変数 DATABASE_URL を使用）
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false } // RenderではSSLが必要
+  ssl: { rejectUnauthorized: false }
 });
 
-// GASなどから送信されたJSONデータを受け取るエンドポイント
 app.post('/api/orders/upload', async (req, res) => {
-  const rows = req.body.data; // data配列としてJSONで送られてくる受注データ
+  const rows = req.body.data;
+  if (!rows || !Array.isArray(rows) || rows.length === 0) {
+    return res.status(400).send('アップロードするデータが見つかりません。');
+  }
+
   const client = await pool.connect();
 
   try {
-    await client.query('BEGIN'); // トランザクション開始
+    await client.query('BEGIN');
 
+    // --- ▼▼▼ 変更点 1: INSERT処理の修正 ▼▼▼ ---
+    // ON CONFLICT の対象を、データベースで設定した複合UNIQUE制約名に変更します。
+    // これにより、「完全に同一のレコード」のみ挿入をスキップします。
+    const insertQuery = `
+      INSERT INTO orders (
+        order_id, order_date, sales_dept, customer_name, customer_id,
+        product_code, product_name, quantity, unit_price, total_price,
+        currency, delivery_date, order_status, jpy_value, timestamp
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+      )
+      -- ここでステップ1で設定した制約名を指定します
+      ON CONFLICT ON CONSTRAINT unique_order_record DO NOTHING;
+    `;
+    
     for (const row of rows) {
-      // JSONオブジェクトから必要な項目を取り出す
-      const {
-        order_id, order_date, sales_dept, customer_name, customer_id,
-        product_code, product_name, quantity, unit_price, total_price,
-        currency, delivery_date, order_status, jpy_value
-      } = row;
-
-      // 注文ステータスが空でない（キャンセル・変更など）場合は、同じorder_idのデータを削除
-      if (order_status && order_status.trim() !== "") {
-        await client.query(`DELETE FROM orders WHERE order_id = $1`, [order_id]);
-      }
-
-      // 新規データとして追加（削除済みデータも含む）
-      await client.query(`
-        INSERT INTO orders (
-          order_id, order_date, sales_dept, customer_name, customer_id,
-          product_code, product_name, quantity, unit_price, total_price,
-          currency, delivery_date, order_status, jpy_value
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-      `, [
-        order_id, order_date, sales_dept, customer_name, customer_id,
-        product_code, product_name, quantity, unit_price, total_price,
-        currency, delivery_date, order_status, jpy_value
-      ]);
+      const values = [
+        row.order_id, row.order_date, row.sales_dept, row.customer_name,
+        row.customer_id, row.product_code, row.product_name, row.quantity,
+        row.unit_price, row.total_price, row.currency, row.delivery_date,
+        row.order_status, row.jpy_value, row.timestamp
+      ];
+      await client.query(insertQuery, values);
     }
+    console.log(`${rows.length}件のデータ挿入処理（完全重複はスキップ）が完了しました。`);
+    // --- ▲▲▲ 変更点 1: ここまで ▲▲▲ ---
 
-    await client.query('COMMIT'); // コミットしてDBに反映
-    res.status(200).send('DB登録完了'); // 成功レスポンス
+
+    // --- ▼▼▼ 変更点 2: ウィンドウ関数の修正 ▼▼▼ ---
+    // timestampが同じ場合を考慮し、order_statusで「最新」の状態を判断するロジックを追加します。
+    console.log('is_countableカラムの更新処理を開始します...');
+    const updateQuery = `
+      WITH OrderStatusAnalysis AS (
+          SELECT
+              order_id,
+              timestamp,
+              customer_id,
+              -- グループ内に'キャンセル'があるかの判定は変更なし
+              MAX(CASE WHEN order_status = 'キャンセル' THEN 1 ELSE 0 END) OVER (PARTITION BY order_id) AS has_cancelled_in_group,
+              
+              -- 「最新のレコード」を特定するためのROW_NUMBER()を修正
+              ROW_NUMBER() OVER (
+                  PARTITION BY order_id 
+                  ORDER BY 
+                      timestamp DESC,
+                      -- timestampが同じ場合はorder_statusで優先順位を決定
+                      -- 1. キャンセル, 2. 変更, 3. それ以外(受注など) の順で「新しい」と判断
+                      CASE order_status
+                          WHEN 'キャンセル' THEN 1
+                          WHEN '変更' THEN 2
+                          ELSE 3
+                      END
+              ) AS rn_latest
+          FROM
+              orders
+      )
+      UPDATE orders
+      SET
+          is_countable =
+              CASE
+                  WHEN LEFT(orders.customer_id, 1) = 'Z' THEN false
+                  WHEN OSA.has_cancelled_in_group = 1 THEN FALSE
+                  -- rn_latest が 1 のレコード（＝最新の状態）のみをTRUEにする
+                  WHEN OSA.has_cancelled_in_group = 0 AND OSA.rn_latest = 1 THEN TRUE
+                  ELSE FALSE
+              END 
+      FROM OrderStatusAnalysis AS OSA
+      WHERE orders.order_id = OSA.order_id
+        AND orders.timestamp = OSA.timestamp;
+    `;
+    
+    const result = await client.query(updateQuery);
+    console.log(`is_countableカラムの更新が完了しました。影響を受けた行数: ${result.rowCount}`);
+    // --- ▲▲▲ 変更点 2: ここまで ▲▲▲ ---
+
+    await client.query('COMMIT');
+    res.status(200).send('データベースへの追加・更新が正常に完了しました。');
+
   } catch (err) {
-    await client.query('ROLLBACK'); // エラー時はロールバック
-    console.error(err);
-    res.status(500).send('DBエラー');
+    await client.query('ROLLBACK');
+    console.error('データベース処理中にエラーが発生しました:', err);
+
+    res.status(500).send('データベース処理中にエラーが発生しました。詳細はサーバーログを確認してください。');
   } finally {
-    client.release(); // DB接続を解放
+    client.release();
   }
 });
 
