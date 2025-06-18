@@ -166,6 +166,10 @@ app.get('/api/orders/export-current-fiscal-year', async (req, res) => {
       if (newRecord.delivery_date instanceof Date) {
         newRecord.delivery_date = newRecord.delivery_date.toISOString().split('T')[0];
       }
+      // delivery_date 列を変換（もし存在し、Dateオブジェクトの場合）
+      if (newRecord.timestamp instanceof Date) {
+        newRecord.timestamp = newRecord.delivery_date.toISOString().split('T')[0];
+      }
       // 他にも日付として扱いたい列があればここに追加
       // 例: if (newRecord.some_other_date_column instanceof Date) { ... }
 
